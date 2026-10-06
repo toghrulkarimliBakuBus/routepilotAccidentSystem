@@ -650,6 +650,7 @@ function reverseGeocode(){
     .catch(function(){});
 }
 function updateProgress(){
+  recentOncedan();
   function has(id){ var e=document.getElementById(id); return e&&e.value.trim(); }
   var total=7, filled=(has('depo')?1:0)+(has('driver_id')?1:0)+(has('bus_no')?1:0)+(getRoute()?1:0)+
     (has('incident_date')?1:0)+(has('incident_time')?1:0)+(kind?1:0);
@@ -747,54 +748,60 @@ function submitIncident(){
   var err=document.getElementById('err'); err.style.display='none';
   var v=validateForm(); if(v){ err.textContent=v; err.style.display='block'; err.scrollIntoView({behavior:'smooth',block:'center'}); return; }
   if(SU==="BURAYA_APPS_SCRIPT_URL_YAZIN"){ alert("Script URL qeyd olunmayıb!"); return; }
-  var btn=document.getElementById('sbtn'); btn.disabled=true; btn.textContent="Göndərilir...";
   var payload=buildPayload();
-  var bitir=function(){ btn.disabled=false; btn.textContent="Bildir →"; };
-  tekrarYoxla(payload,function(davam){
-    if(!davam){ bitir(); return; }
-    if(davam==='tekrar') payload.repeat_confirmed=true;
-    if(!navigator.onLine){ queueAndShow(payload,'oflayn'); bitir(); return; }
-    gonder(payload,bitir);
-  });
+  var davam=tekrarYoxla(payload);                 // şəbəkə gözlənilmir — nəticə əvvəlcədən alınıb
+  if(!davam) return;
+  if(davam==='tekrar') payload.repeat_confirmed=true;
+  // Bildiriş dərhal telefonda saxlanılır və ekran göstərilir; göndəriş arxa planda gedir.
+  if(!novbeyeQoy(payload)) return;
+  aciqSaxla(payload,null);
+  showSuccess(payload);
+  flushQueue();
 }
-// Son 1 saatda eyni avtobus və ya sürücü üçün qəza bildirilibsə — soruşulur.
-// davam: false — dayandır; true — göndər; 'tekrar' — sürücü təkrarı təsdiqlədi.
-function tekrarYoxla(payload,cb){
+// ── Təkrar bildiriş xəbərdarlığı ──
+// Server yoxlaması sürücü formanı doldurarkən arxa planda edilir (RECENT), göndərişdə gözlənilmir.
+var RECENT={}, recentT=null;
+function recentAcar(){ return [tip,fval('bus_no').toUpperCase(),fval('driver_id').toUpperCase()].join('|'); }
+function recentOncedan(){
+  clearTimeout(recentT);
+  recentT=setTimeout(function(){
+    var k=recentAcar(), b=fval('bus_no'), d=fval('driver_id');
+    if(!tip||(!b&&!d)||RECENT[k]||!navigator.onLine||!SU||SU==="BURAYA_APPS_SCRIPT_URL_YAZIN") return;
+    RECENT[k]={yuklenir:true};
+    fetch(SU+"?action=checkRecent&type="+encodeURIComponent(tip)+"&bus_no="+encodeURIComponent(b)+"&driver_id="+encodeURIComponent(d))
+      .then(function(r){return r.json();}).then(function(x){ RECENT[k]=x||{}; })
+      .catch(function(){ delete RECENT[k]; });
+  },700);
+}
+// Son 1 saatda eyni avtobus və ya sürücü üçün eyni növlü bildiriş — soruşulur.
+// Qaytarır: false — dayandır; true — göndər; 'tekrar' — sürücü təkrarı təsdiqlədi.
+function tekrarYoxla(payload){
   var nasaz=payload.incident_type==='Texniki nasazlıq', ad=nasaz?'nasazlıq bildirişiniz':'qəzanız';
   function sorus(vaxt,id){
-    cb(confirm("Sizin "+vaxt+"-da qeydə alınmış "+ad+" var"+(id?" ("+id+")":"")+
-               ".\n\nYeni "+(nasaz?'nasazlıq':'qəza')+" bildirmək istəyirsiniz?")?'tekrar':false);
+    return confirm("Sizin "+vaxt+"-da qeydə alınmış "+ad+" var"+(id?" ("+id+")":"")+
+                   ".\n\nYeni "+(nasaz?'nasazlıq':'qəza')+" bildirmək istəyirsiniz?")?'tekrar':false;
   }
-  // Oflayn növbədə (hələ göndərilməmiş) son 1 saatın eyni növlü bildirişi
-  try{
-    var q=JSON.parse(localStorage.getItem('bb_queue')||'[]'), now=Date.now();
-    for(var i=q.length-1;i>=0;i--){
-      var p=q[i].payload||{};
-      if(p.incident_type===payload.incident_type&&now-q[i].ts<3600000&&
-         ((p.bus_no&&p.bus_no.toUpperCase()===payload.bus_no.toUpperCase())||(p.driver_id&&p.driver_id===payload.driver_id))){
-        var t=new Date(q[i].ts); sorus(('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2),''); return;
-      }
+  var now=Date.now(), bus=(payload.bus_no||'').toUpperCase(), dr=(payload.driver_id||'').toUpperCase();
+  // bu telefondan son 1 saatda göndərilmiş (növbədə və ya göndərilmiş) eyni növlü bildiriş
+  var son=[];
+  try{ JSON.parse(localStorage.getItem('bb_sent')||'[]').forEach(function(x){ son.push(x); }); }catch(e){}
+  for(var i=son.length-1;i>=0;i--){
+    var x=son[i];
+    if(x.tip===payload.incident_type&&now-x.ts<3600000&&((bus&&x.bus===bus)||(dr&&x.dr===dr))){
+      var t=new Date(x.ts); return sorus(('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2),x.id||'');
     }
-  }catch(e){}
-  if(!navigator.onLine||!SU){ cb(true); return; }
-  var to=setTimeout(function(){ to=null; cb(true); },8000);     // yavaş şəbəkədə bildirişi saxlamırıq
-  fetch(SU+"?action=checkRecent&type="+encodeURIComponent(payload.incident_type)+"&bus_no="+encodeURIComponent(payload.bus_no)+"&driver_id="+encodeURIComponent(payload.driver_id))
-    .then(function(r){return r.json();}).then(function(d){
-      if(!to) return; clearTimeout(to); to=null;
-      if(d&&d.found) sorus(d.time,d.incident_id); else cb(true);
-    }).catch(function(){ if(to){ clearTimeout(to); to=null; cb(true); } });
+  }
+  var r=RECENT[recentAcar()];
+  if(r&&r.found) return sorus(r.time,r.incident_id);
+  return true;
 }
-function gonder(payload,bitir){
-  var err=document.getElementById('err');
-  sendFull(payload).then(function(res){
-    if(res&&res.success){ aciqSaxla(payload,res); showSuccess(res.id,false,payload); return; }
-    // Server cavab verdi, amma bildirişi qəbul etmədi — növbəyə qoyulmur, səbəb göstərilir.
-    err.textContent="Bildiriş qəbul edilmədi: "+((res&&res.error)||"serverdən naməlum cavab gəldi, yenidən cəhd edin.");
-    err.style.display='block'; err.scrollIntoView({behavior:'smooth',block:'center'});
-  }).catch(function(e){
-    // İnternet var, amma serverə çatmaq və ya cavabı oxumaq alınmadı.
-    queueAndShow(payload, navigator.onLine ? 'server' : 'oflayn');
-  }).finally(bitir);
+function gondermeYaz(payload){              // təkrar xəbərdarlığı üçün yerli qeyd (son 1 saat)
+  try{
+    var a=JSON.parse(localStorage.getItem('bb_sent')||'[]').filter(function(x){ return Date.now()-x.ts<3600000; });
+    a.push({cid:payload.client_id,tip:payload.incident_type,bus:(payload.bus_no||'').toUpperCase(),
+            dr:(payload.driver_id||'').toUpperCase(),ts:Date.now(),id:''});
+    localStorage.setItem('bb_sent',JSON.stringify(a));
+  }catch(e){}
 }
 function hex32(){
   var a=new Uint8Array(16);
@@ -820,25 +827,52 @@ function sendFull(payload){
     });
   });
 }
-function queueAndShow(payload,sebeb){
+function novbeyeQoy(payload){
   var q=JSON.parse(localStorage.getItem('bb_queue')||'[]');
   q.push({payload:payload,ts:Date.now()});
   try{ localStorage.setItem('bb_queue',JSON.stringify(q)); }
-  catch(e){ alert("Telefonun yaddaşı doludur — bildiriş saxlanmadı. İnternet olanda yenidən göndərin."); return; }
-  showSuccess("(oflayn)",sebeb||'oflayn',payload);
+  catch(e){ alert("Telefonun yaddaşı doludur — bildiriş saxlanmadı. Yaddaşı boşaldıb yenidən göndərin."); return false; }
+  gondermeYaz(payload);
+  return true;
 }
+// Göndərilmiş bildirişin nömrəsi — açıq siyahıda, son göndərişlərdə və ekranda yazılır
+function nomreAldi(cid,id){
+  var a=aciqOxu(), d=false;
+  a.forEach(function(x){ if(x.cid===cid&&!x.id){ x.id=id; d=true; } });
+  if(d){ aciqYaz(a); aciqCiz(); }
+  try{
+    var s=JSON.parse(localStorage.getItem('bb_sent')||'[]');
+    s.forEach(function(x){ if(x.cid===cid) x.id=id; }); localStorage.setItem('bb_sent',JSON.stringify(s));
+  }catch(e){}
+  if(EKRAN_CID===cid){
+    document.getElementById('success-id').textContent=id;
+    document.getElementById('queued-note').style.display='none';
+  }
+}
+var FLUSHING=false, flushT=null;
 function flushQueue(){
   var q=JSON.parse(localStorage.getItem('bb_queue')||'[]');
   // client_id-siz köhnə növbə elementləri hər açılışda cədvələ yenidən yazılırdı — atılır
   var q2=q.filter(function(x){ return x&&x.payload&&x.payload.client_id; });
   if(q2.length!==q.length){ q=q2; localStorage.setItem('bb_queue',JSON.stringify(q)); }
-  if(!q.length||!navigator.onLine||!SU||SU==="BURAYA_APPS_SCRIPT_URL_YAZIN") return;
-  var remaining=[];
+  if(!q.length||FLUSHING||!SU||SU==="BURAYA_APPS_SCRIPT_URL_YAZIN") return;
+  if(!navigator.onLine){ ekranQeyd('oflayn'); return; }
+  FLUSHING=true; clearTimeout(flushT);
+  var gedib={};
   (function next(i){
-    if(i>=q.length){ localStorage.setItem('bb_queue',JSON.stringify(remaining)); aciqCiz(); return; }
-    sendFull(q[i].payload).then(function(res){
-      if(res&&res.success){ aciqSaxla(q[i].payload,res); } else { remaining.push(q[i]); }
-    }).catch(function(){ remaining.push(q[i]); }).finally(function(){ next(i+1); });
+    if(i>=q.length){
+      // göndərilənlər növbədən çıxarılır (bu arada əlavə olunanlar saxlanılır)
+      var cari=JSON.parse(localStorage.getItem('bb_queue')||'[]').filter(function(x){ return !(x.payload&&gedib[x.payload.client_id]); });
+      localStorage.setItem('bb_queue',JSON.stringify(cari));
+      FLUSHING=false;
+      if(cari.length){ ekranQeyd(navigator.onLine?'server':'oflayn'); flushT=setTimeout(flushQueue,20000); }
+      return;
+    }
+    var pl=q[i].payload;
+    sendFull(pl).then(function(res){
+      if(res&&res.success){ gedib[pl.client_id]=1; nomreAldi(pl.client_id,res.id); }
+      else if(EKRAN_CID===pl.client_id&&res&&res.error){ ekranQeyd('xeta',res.error); }
+    }).catch(function(){}).finally(function(){ next(i+1); });
   })(0);
 }
 // ════ AÇIQ BİLDİRİŞLƏR (avtobus xətdən çıxıbsa) ════
@@ -847,9 +881,9 @@ function aciqOxu(){ try{ return JSON.parse(localStorage.getItem('bb_open')||'[]'
 function aciqYaz(a){ try{ localStorage.setItem('bb_open',JSON.stringify(a)); }catch(e){} }
 function aciqdir(p){ return p.bus_status && p.bus_status!=='Xəttə davam edir'; }
 function aciqSaxla(p,res){
-  if(!aciqdir(p)||!res||!res.id) return;
-  var a=aciqOxu().filter(function(x){return x.id!==res.id;});
-  a.unshift({id:res.id, key:res.close_key||p.close_key||'', cid:p.client_id||'', tip:p.incident_type, bus:p.bus_no,
+  if(!aciqdir(p)) return;
+  var a=aciqOxu().filter(function(x){return x.cid!==p.client_id;});
+  a.unshift({id:(res&&res.id)||'', key:(res&&res.close_key)||p.close_key||'', cid:p.client_id||'', tip:p.incident_type, bus:p.bus_no,
              start:(p.incident_date||'')+' '+(p.incident_time||''), ad:p.fault_name||p.incident_category||''});
   aciqYaz(a); aciqCiz();
 }
@@ -858,9 +892,10 @@ function aciqCiz(){
   card.style.display=a.length?'block':'none';
   document.getElementById('aciq-list').innerHTML=a.map(function(x,i){
     var d=x.start.split(' '), tarix=d[0]?d[0].split('-').reverse().join('.'):'';
-    return '<div class="aciq-item"><div class="ai-txt"><b>'+x.id+'</b> · '+(x.tip==='Texniki nasazlıq'?'Nasazlıq':'Qəza')+
+    return '<div class="aciq-item"><div class="ai-txt"><b>'+(x.id||'Göndərilir…')+'</b> · '+(x.tip==='Texniki nasazlıq'?'Nasazlıq':'Qəza')+
       '<br>'+esc2(x.bus)+(x.ad?' · '+esc2(x.ad):'')+'<br>'+tarix+' '+(d[1]||'')+'</div>'+
-      '<button class="aciq-btn" onclick="baglaAc('+i+')">Bağla</button></div>';
+      (x.id ? '<button class="aciq-btn" onclick="baglaAc('+i+')">Bağla</button>'
+            : '<span class="hint" style="margin:0">nömrə gözlənilir</span>')+'</div>';
   }).join('');
 }
 var BAGLA_HOW=['Yerində düzəldildi','Servis düzəltdi','Depoya yedəkləndi','Avtobus dəyişdirildi'];
@@ -923,20 +958,31 @@ function baglaGonder(){
     })
     .finally(function(){ btn.disabled=false; btn.textContent='Bağla'; });
 }
-function showSuccess(id,queued,payload){
-  document.getElementById('open-note').style.display=(payload&&aciqdir(payload))?'block':'none';
-  document.getElementById('success-title').textContent = kind==='nasaz' ? 'Nasazlıq bildirişi qəbul edildi' : 'Qəza bildirişi qəbul edildi';
+var EKRAN_CID='';
+function showSuccess(payload){
+  EKRAN_CID=payload.client_id;
+  document.getElementById('open-note').style.display=aciqdir(payload)?'block':'none';
+  document.getElementById('success-title').textContent = kind==='nasaz' ? 'Nasazlıq bildirişi göndərildi' : 'Qəza bildirişi göndərildi';
   document.getElementById('form-section').style.display='none';
   document.getElementById('success-screen').style.display='block';
-  document.getElementById('success-id').textContent=queued?"Gözləyir...":id;
-  var qn=document.getElementById('queued-note');
-  qn.textContent = queued==='server'
-    ? "⚠ Server cavab vermədi — bildiriş telefonda saxlandı, avtomatik yenidən göndəriləcək. Bir neçə dəqiqəyə «Gözləyir...» qalarsa, OCC-yə zəng edin."
-    : "⚠ İnternet yox idi — bildiriş telefonda saxlandı, internet qayıdanda avtomatik göndəriləcək.";
-  qn.style.display=queued?'block':'none';
+  document.getElementById('success-id').textContent='Nömrə alınır…';
+  document.getElementById('queued-note').style.display='none';
+  if(!navigator.onLine) ekranQeyd('oflayn');
   window.scrollTo(0,0);
 }
+function ekranQeyd(nov,metn){
+  if(!EKRAN_CID) return;
+  var q=JSON.parse(localStorage.getItem('bb_queue')||'[]');
+  if(!q.some(function(x){ return x.payload&&x.payload.client_id===EKRAN_CID; })) return;   // artıq gedib
+  var qn=document.getElementById('queued-note');
+  qn.textContent = nov==='oflayn'
+    ? "⚠ İnternet yoxdur — bildiriş telefonda saxlanıb, internet gələndə avtomatik göndəriləcək."
+    : nov==='xeta' ? "⚠ Server bildirişi qəbul etmədi: "+metn+" Avtomatik yenidən cəhd ediləcək."
+    : "⚠ Server hələ cavab vermir — bildiriş telefonda saxlanıb, avtomatik yenidən göndəriləcək.";
+  qn.style.display='block';
+}
 function resetForm(){
+  EKRAN_CID='';
   ['depo','driver_id','route_manual','bus_no','note','incident_date','incident_time','location_type','location_address','risk_color','bus_status'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('route_select').style.display='none';document.getElementById('route_manual').style.display='none';
   document.getElementById('route-hint').style.display='block';
@@ -973,6 +1019,7 @@ function bugunTarix(){
   bugunTarix();
   updateProgress();
   flushQueue();
+  setInterval(flushQueue,30000);
 })();
 </script>
 </body>
