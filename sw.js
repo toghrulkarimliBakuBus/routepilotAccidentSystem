@@ -1,5 +1,5 @@
 // BakuBus Service Worker — oflayn dəstək
-var CACHE = 'bakubus-v7';
+var CACHE = 'bakubus-v8';
 var ASSETS = [
   'index.html','data.js','manifest.json','logo.png','icon-192.png','icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
