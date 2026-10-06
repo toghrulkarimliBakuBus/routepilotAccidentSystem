@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>BakuBus — Qəza və nasazlıq bildirişi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  :root{
+    --bg:#F4F5F9; --card:#FFFFFF; --ink:#10131A; --txt:#23262E; --mut:#7A7E89;
+    --line:#ECEDF2; --fill:#F2F3F7;
+    --red:#E63946; --red2:#FF5A4E; --red-soft:#FDEBEC;
+    --grn:#16A576; --grn-soft:#E6F6F0; --amb:#D9930D; --amb-soft:#FCF3E1;
+    --blu:#3B6FE0; --blu-soft:#EAF0FC; --vio:#8B5CF6; --vio-soft:#F1EBFE;
+    --r:16px; --r-sm:12px;
+    --sh:0 1px 2px rgba(16,19,26,.05),0 8px 24px -8px rgba(16,19,26,.10);
+    --sh-lg:0 2px 6px rgba(16,19,26,.06),0 16px 40px -12px rgba(16,19,26,.16);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:'Manrope',-apple-system,sans-serif;background:var(--bg);min-height:100vh;color:var(--txt)}
+  :focus-visible{outline:2px solid var(--red);outline-offset:2px;border-radius:4px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  /* ── HEADER (frosted) ── */
+  .header{background:rgba(255,255,255,.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:13px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:1100;border-bottom:1px solid rgba(16,19,26,.06)}
+  .header img.logo{height:28px;display:block;filter:none}
+  .header .htitle{font-size:12px;font-weight:600;color:var(--mut)}
+  .view{display:block;padding-bottom:48px;max-width:640px;margin:0 auto}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .offline-bar{display:none;background:var(--amb);color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:700}
+  .offline-bar.show{display:block}
+  /* ── KART ── */
+  .card{background:var(--card);border-radius:var(--r);padding:20px;margin:12px 16px;box-shadow:var(--sh)}
+  .card-title{font-size:12px;font-weight:800;color:var(--mut);margin-bottom:16px;text-transform:uppercase;letter-spacing:.09em}
+  .fg{margin-bottom:16px}.fg:last-child{margin-bottom:0}
+  label{display:block;font-size:13px;font-weight:700;color:#3B3E47;margin-bottom:7px}
+  .req::after{content:" *";color:var(--red)}
+  input,select,textarea{width:100%;padding:12px 14px;font-size:15px;border:1.5px solid transparent;border-radius:var(--r-sm);background:var(--fill);color:var(--ink);font-family:inherit;font-weight:500;-webkit-appearance:none;transition:border-color .15s,background .15s}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--red);background:#fff}
+  input::placeholder,textarea::placeholder{color:#A6A9B3;font-weight:500}
+  textarea{resize:none;height:84px}
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237A7E89' stroke-width='2.6' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .err{background:var(--red-soft);color:#B02430;padding:11px 14px;border-radius:var(--r-sm);font-size:13px;margin-bottom:12px;display:none;font-weight:600}
+  .ok{background:var(--grn-soft);color:#0D7D58;padding:10px 13px;border-radius:var(--r-sm);font-size:13px;margin-bottom:12px;display:none;font-weight:600}
+  .hint{font-size:12px;color:var(--mut);margin-top:6px;font-weight:500}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .d-Yaşıl{background:#16A576}.d-Sarı{background:#EFC11A}.d-Narıncı{background:#F07B16}.d-Qırmızı{background:#E63946}.d-Qara{background:#10131A}
+  /* ── FORMA ── */
+  .progress-wrap{padding:12px 16px 0}
+  .progress-bar{height:7px;background:#E5E7EE;border-radius:99px;overflow:hidden}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--grn),#2BC78F);width:0%;transition:width .3s;border-radius:99px}
+  .progress-text{font-size:11.5px;color:var(--mut);margin-top:6px;text-align:right;font-weight:700}
+  .tip-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .tip-btn{padding:15px 8px;border:1.5px solid transparent;border-radius:var(--r-sm);background:var(--fill);cursor:pointer;text-align:center;font-family:inherit;transition:all .15s}
+  .tip-btn .icon{font-size:23px;display:block;margin-bottom:6px}
+  .tip-btn .lbl{font-size:12px;font-weight:700;color:#4A4D56;line-height:1.3}
+  .tip-btn.sel{background:#fff;box-shadow:var(--sh)}
+  .tip-interval.sel{border-color:var(--blu)}.tip-nasazliq.sel{border-color:var(--amb)}
+  .tip-qeza.sel{border-color:var(--red)}.tip-sernishin.sel{border-color:var(--grn)}
+  .seg{display:flex;gap:8px}
+  .seg-btn{flex:1;padding:11px 6px;border:1.5px solid transparent;border-radius:var(--r-sm);background:var(--fill);cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:#4A4D56;text-align:center;transition:all .15s}
+  .seg-btn.sel{background:var(--ink);color:#fff;font-weight:700}
+  .accident-section{display:none}
+  .gps-btn{width:100%;padding:13px;background:var(--blu);color:#fff;border:none;border-radius:var(--r-sm);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 8px 18px -8px rgba(59,111,224,.5)}
+  .gps-btn:disabled{opacity:.6}
+  #drv-map{height:220px;border-radius:var(--r-sm);margin-top:12px;display:none}
+  .stop-box{display:none;margin-top:12px;padding:13px 14px;background:var(--fill);border-radius:var(--r-sm);font-size:13px;color:#4A4D56;font-weight:500}
+  .stop-box .sb-stop{font-weight:800;color:var(--ink)}
+  .route-warn{display:none;margin-top:8px;padding:11px 13px;background:var(--amb-soft);color:#9A6A06;border-radius:var(--r-sm);font-size:13px;font-weight:600}
+  .route-ok{display:none;margin-top:8px;padding:11px 13px;background:var(--grn-soft);color:#0D7D58;border-radius:var(--r-sm);font-size:13px;font-weight:600}
+  .risk-info{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .risk-chip{font-size:11px;padding:4px 10px;border-radius:99px;display:flex;align-items:center;gap:5px;font-weight:700}
+  .rc-dot{width:7px;height:7px;border-radius:50%}
+  .confirm-box{display:flex;align-items:flex-start;gap:11px;padding:14px;background:var(--amb-soft);border-radius:var(--r-sm)}
+  .confirm-box input{position:absolute;opacity:0;width:22px;height:22px;margin:0;cursor:pointer}
+  .confirm-box .cbx{width:22px;height:22px;flex-shrink:0;margin-top:1px;border:2px solid #C99A3A;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;transition:all .15s;position:relative}
+  .confirm-box .cbx svg{width:14px;height:14px;stroke:#fff;stroke-width:3.5;fill:none;opacity:0;transition:opacity .15s}
+  .confirm-box input:checked + .cbx{background:var(--amb);border-color:var(--amb)}
+  .confirm-box input:checked + .cbx svg{opacity:1}
+  .confirm-box input:focus-visible + .cbx{outline:2px solid var(--amb);outline-offset:2px}
+  .confirm-box label{font-size:13px;color:#8A5E05;margin:0;font-weight:700;cursor:pointer;flex:1}
+  .submit-btn{width:100%;padding:16px;background:linear-gradient(135deg,var(--red),var(--red2));color:#fff;border:none;border-radius:14px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;margin-top:4px;box-shadow:0 12px 26px -10px rgba(230,57,70,.55);transition:transform .12s}
+  .submit-btn:active{transform:scale(.985)}
+  .submit-btn:disabled{opacity:.55}
+  .success-screen{display:none;text-align:center;padding:36px 20px}
+  .success-icon{width:66px;height:66px;background:var(--grn-soft);color:var(--grn);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:27px}
+  .success-screen h2{font-size:21px;font-weight:800;color:var(--ink);margin-bottom:8px;letter-spacing:-.01em}
+  .success-screen p{font-size:14px;color:var(--mut);line-height:1.6;font-weight:500}
+  .success-id{display:inline-block;margin-top:12px;font-size:17px;font-weight:800;color:var(--ink);background:var(--fill);padding:11px 22px;border-radius:var(--r-sm);letter-spacing:.04em;font-variant-numeric:tabular-nums}
+  .queued-note{background:var(--amb-soft);color:#8A5E05;padding:11px 13px;border-radius:var(--r-sm);font-size:13px;margin-top:12px;display:none;font-weight:600}
+  .success-id{display:block;width:fit-content;margin-left:auto;margin-right:auto}
+  .new-btn{display:block;margin-left:auto;margin-right:auto;margin-top:24px;padding:13px 30px;background:var(--ink);color:#fff;border:none;border-radius:var(--r-sm);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer}
+  .intro{margin:14px 16px 0;padding:14px 16px;background:var(--red-soft);color:#8E1F29;border-radius:var(--r-sm);font-size:13px;font-weight:600;line-height:1.55}
+  @media(max-width:420px){.row{grid-template-columns:1fr}}
+  .tip-grid{grid-template-columns:1fr 1fr}
+  .tip-btn.sel{border-color:var(--red)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{padding:10px 14px;border:1.5px solid transparent;border-radius:999px;background:var(--fill);cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:#4A4D56;transition:all .15s}
+  .chip.sel{background:var(--ink);color:#fff;font-weight:700}
+  .chip.multi.sel::before{content:"✓ ";}
+  .qnote{font-size:12px;color:var(--mut);margin:-4px 0 10px;font-weight:500}
+  .kind-grid .tip-btn{padding:20px 8px}
+  .kind-grid .tip-btn .icon{font-size:30px}
+  .kind-grid .tip-btn .lbl{font-size:14px}
+  .auto-badge{display:inline-block;font-size:10.5px;font-weight:800;color:#0D7D58;background:var(--grn-soft);border-radius:99px;padding:2px 8px;margin-left:6px}
+  .aciq-item{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+  .aciq-item:first-child{border-top:none}
+  .aciq-item .ai-txt{flex:1;font-size:13px;color:#4A4D56;font-weight:500;line-height:1.45}
+  .aciq-item .ai-txt b{color:var(--ink);font-weight:800}
+  .aciq-btn{padding:9px 16px;border:none;border-radius:99px;background:var(--ink);color:#fff;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(16,19,26,.45);z-index:2000;padding:16px;overflow-y:auto}
+  .close-card{max-width:520px;margin:40px auto}
+</style>
+</head>
+<body>
+<script>var SCRIPT_URL="https://script.google.com/macros/s/AKfycbxRx2BCYvi2F9z8IX7J8aZj_nuhAgmhzQxQ5pJE0pjjQOJIf4EWTIF4vDB7BuX3vrRCwg/exec";</script>
+
+<div class="header">
+  <img class="logo" src="logo.png" alt="BakuBus">
+  <span class="htitle">Qəza və nasazlıq bildirişi</span>
+</div>
+<div class="offline-bar" id="offline-bar">⚠ İnternet yoxdur — bildiriş telefonda saxlanılacaq və internet gələndə göndəriləcək</div>
+<div class="intro">Bu forma qəza və texniki nasazlığı bildirmək üçündür. Ulduzlu (*) sahələr məcburidir.</div>
+
+<div class="view" id="view-bildir">
+  <div id="form-section">
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="prog"></div></div>
+      <div class="progress-text" id="prog-text">0% dolu</div>
+    </div>
+    <div class="card" id="aciq-card" style="display:none">
+      <div class="card-title">Açıq bildirişləriniz</div>
+      <div class="hint" style="margin:-8px 0 12px">Avtobus hərəkətə qayıdanda bildirişi bağlayın — yolda qalma müddəti avtomatik hesablanır.</div>
+      <div id="aciq-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Nə bildirirsiniz?</div>
+      <div class="tip-grid kind-grid" id="kind-grid"></div>
+    </div>
+    <div id="main-blok" style="display:none">
+    <div class="card">
+      <div class="card-title">Sürücü və avtobus</div>
+      <div class="fg">
+        <label class="req">Depo</label>
+        <select id="depo" onchange="onDepoChange()">
+          <option value="">Seçin...</option>
+          <option>Depo 1</option><option>Depo 2</option><option>Depo 3</option><option>Depo 4</option>
+          <option>Depo 5</option><option>Gəncə Deposu</option><option>Xankəndi Deposu</option><option>Naxçıvan Deposu</option>
+        </select>
+      </div>
+      <div class="fg"><label class="req">Sürücü ID</label><input type="text" id="driver_id" placeholder="məs. SR-0042" oninput="updateProgress()"></div>
+      <div class="row">
+        <div class="fg">
+          <label class="req">Marşrut</label>
+          <select id="route_select" style="display:none" onchange="onRouteChange();updateProgress()"><option value="">Əvvəlcə depo seçin</option></select>
+          <input type="text" id="route_manual" style="display:none" placeholder="məs. 28" oninput="updateProgress()">
+          <div class="hint" id="route-hint">Əvvəlcə depo seçin</div>
+        </div>
+        <div class="fg"><label class="req">Avtobus №</label>
+          <select id="bus_select" style="display:none" onchange="onBusSelect()"></select>
+          <input type="text" id="bus_no" style="display:none" placeholder="dövlət nömrəsi (77JA623) və ya qaraj nömrəsi" oninput="updateProgress()">
+          <div class="hint" id="bus-hint">Əvvəlcə depo seçin</div>
+        </div>
+      </div>
+    </div>
+    <div class="accident-section" id="accident-section" style="display:block">
+      <div class="card">
+        <div class="card-title">Hadisənin baş vermə vaxtı</div>
+        <div class="row">
+          <div class="fg"><label class="req">Tarix</label><input type="date" id="incident_date" onchange="updateProgress()"></div>
+          <div class="fg"><label class="req">Saat</label><input type="time" id="incident_time" onchange="updateProgress()"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Hadisə yeri (GPS)</div>
+        <button class="gps-btn" id="gps-btn" onclick="findLocation()">📍 Avtomatik tap</button>
+        <div id="drv-map"></div>
+        <div class="hint" id="map-hint" style="display:none">Nöqtə dəqiq deyilsə, xəritədə işarəni sürüşdürün</div>
+        <div class="stop-box" id="stop-box"></div>
+        <div class="route-ok" id="route-ok"></div>
+        <div class="route-warn" id="route-warn"></div>
+        <div class="fg" style="margin:14px 0 0">
+          <label>Ünvan</label>
+          <input type="text" id="location_address" placeholder="GPS tapdıqda avtomatik dolacaq" oninput="updateProgress()">
+          <div class="hint">Avtomatik dolur — lazım olsa düzəldin</div>
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label class="req" id="lt-label">Yer tipi</label>
+          <select id="location_type" onchange="updateProgress()">
+            <option value="">Seçin...</option>
+            <option>Küçə / prospekt</option><option>Dayanacaq</option><option>Son dayanacaq</option>
+            <option>Avtobus zolağı</option><option>Zolaqdan kənar</option>
+          </select>
+        </div>
+      </div>
+      <div class="card" id="qeza-sec">
+        <div class="card-title">Nə baş verdi?</div>
+        <div class="tip-grid" id="qtip-grid"></div>
+      </div>
+    </div>
+    <div id="after-type" style="display:none">
+      <div class="card">
+        <div class="card-title" id="det-title">Təfərrüat</div>
+        <div id="det-box"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Çağırılan xidmətlər və risk</div>
+        <div id="svc-box"></div>
+        <div class="fg" style="margin-bottom:0">
+          <label class="req">Risk səviyyəsi</label>
+          <select id="risk_color" onchange="riskManual=true;updateProgress()">
+            <option value="">Seçin...</option>
+            <option>Yaşıl</option><option>Sarı</option><option>Narıncı</option><option>Qırmızı</option><option>Qara</option>
+          </select>
+          <div class="hint" id="risk-hint"></div>
+          <div class="risk-info">
+            <span class="risk-chip" style="background:#E1F5EE;color:#085041"><span class="rc-dot" style="background:#1D9E75"></span>Yaşıl: cüzi zərər</span>
+            <span class="risk-chip" style="background:#FEF9C3;color:#713F12"><span class="rc-dot" style="background:#EAB308"></span>Sarı: zərər var, xəsarət yoxdur</span>
+            <span class="risk-chip" style="background:#FFEDD5;color:#7C2D12"><span class="rc-dot" style="background:#F97316"></span>Narıncı: yüngül xəsarət</span>
+            <span class="risk-chip" style="background:#FCEBEB;color:#501313"><span class="rc-dot" style="background:#e63946"></span>Qırmızı: xəstəxanaya aparılıb</span>
+            <span class="risk-chip" style="background:#E5E5E5;color:#1a1a1a"><span class="rc-dot" style="background:#1a1a1a"></span>Qara: ağır xəsarət / həyati təhlükə</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Sübut</div>
+        <div class="fg" style="margin-bottom:0">
+          <label class="req">Hadisə yerinin foto və ya videosu çəkilib?</label>
+          <div class="seg">
+            <button class="seg-btn" onclick="selectSeg('photo_video','Bəli',this);togglePhoto()">Bəli</button>
+            <button class="seg-btn" onclick="selectSeg('photo_video','Xeyr',this);togglePhoto()">Xeyr</button>
+          </div>
+          <div class="hint" id="photo-hint" style="display:none">Faylları telefonunuzda saxlayın, tələb olunduqda təqdim edəcəksiniz.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Avtobusun vəziyyəti</div>
+        <div class="fg">
+          <label class="req">Avtobus hərəkət edə bilir?</label>
+          <input type="hidden" id="bus_status">
+          <div class="chips" id="bus-chips"></div>
+        </div>
+        <div class="fg" id="bus-srn-fg" style="display:none;margin-bottom:0">
+          <label class="req">Sərnişinlər düşürüldü?</label>
+          <div class="chips" id="bus-srn-chips"></div>
+        </div>
+      </div>
+    </div>
+    <div id="nasaz-blok" style="display:none">
+      <div class="card">
+        <div class="card-title">Texniki nasazlıq</div>
+        <div id="nz-box"></div>
+      </div>
+    </div>
+    <div id="son-blok" style="display:none">
+      <div class="card">
+        <div class="card-title">Əlavə qeyd</div>
+        <textarea id="note" placeholder="Qısa əlavə məlumat (istəyə bağlı)..."></textarea>
+      </div>
+      <div class="card" id="confirm-card">
+        <label class="confirm-box" for="driver_confirmed">
+          <input type="checkbox" id="driver_confirmed" onchange="updateProgress()">
+          <span class="cbx"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></span>
+          <span style="font-size:13px;color:#8A5E05;font-weight:700">Daxil etdiyim məlumatların doğru olduğunu təsdiq edirəm.</span>
+        </label>
+      </div>
+    </div>
+    <div style="margin:0 16px">
+      <div class="err" id="err"></div>
+      <button class="submit-btn" id="sbtn" onclick="submitIncident()">Bildir →</button>
+    </div>
+    </div>
+  </div>
+  <div class="card success-screen" id="success-screen">
+    <div class="success-icon">✓</div>
+    <h2 id="success-title">Bildiriş qəbul edildi</h2>
+    <p>Hadisə nömrəsi:</p>
+    <div class="success-id" id="success-id">INC-...</div>
+    <div class="queued-note" id="open-note" style="display:none;background:var(--blu-soft);color:#2A56B5">Avtobus hərəkətə qayıdanda bu bildirişi «Açıq bildirişləriniz» bölməsindən bağlayın.</div>
+    <div class="queued-note" id="queued-note">⚠ Oflayn idin — bildiriş telefonda saxlandı, internet qayıdanda avtomatik göndəriləcək.</div>
+    <button class="new-btn" onclick="resetForm()">Yeni bildiriş</button>
+  </div>
+</div>
+
+
+<div class="modal-bg" id="close-bg">
+  <div class="card close-card">
+    <div class="card-title" id="close-title">Bildirişi bağla</div>
+    <div class="hint" id="close-info" style="margin:-8px 0 14px"></div>
+    <label class="req">Avtobus nə vaxt hərəkətə qayıtdı?</label>
+    <div class="row" style="margin-bottom:14px">
+      <input type="date" id="close_date" onchange="baglaMuddet()">
+      <input type="time" id="close_time" onchange="baglaMuddet()">
+    </div>
+    <div class="fg"><label class="req">Necə həll olundu?</label><div class="chips" id="close-how"></div></div>
+    <div class="stop-box" id="close-dur" style="display:block"></div>
+    <div class="err" id="close-err"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="new-btn" style="margin:0;width:100%;background:var(--fill);color:var(--ink)" onclick="baglaKapat()">İmtina</button>
+      <button class="new-btn" style="margin:0;width:100%" id="close-btn" onclick="baglaGonder()">Bağla</button>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data.js"></script>
+<script>
+// ════ ÜMUMİ ════
+var SU=(typeof SCRIPT_URL!=='undefined')?SCRIPT_URL:"";
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(function(){}); }
+function setOffline(){ document.getElementById('offline-bar').classList.toggle('show', !navigator.onLine); }
+window.addEventListener('online', function(){ setOffline(); flushQueue(); });
+window.addEventListener('offline', setOffline);
+setOffline();
+
+// ════ SÜRÜCÜ FORMASI ════
+var tip="", seg={injury:"",photo_video:""};
+var gps={lat:null,lon:null}, nearest=null, routeMatch="", drvMap=null, drvMarker=null;
+
+// Siyahılar: RoutePilot hər gün GitHub-a yazır (routes.json, buses.json).
+// İnternet olmasa telefonda saxlanmış son nüsxə, o da yoxdursa data.js işlədilir.
+var BUSES=(typeof BUSES_DATA!=='undefined')?BUSES_DATA:{};
+// data.js-dəki DEPO_ROUTES dəyişməz (const) elan olunub — işçi nüsxə ayrıca saxlanılır
+var MARSRUT=(typeof DEPO_ROUTES!=='undefined')?JSON.parse(JSON.stringify(DEPO_ROUTES)):{};
+var EL_ILE='__el__', MARSRUT_XETT=null;
+function siyahiYukle(){
+  try{ var r=JSON.parse(localStorage.getItem('bb_routes')||'null'); if(r&&r.depo) MARSRUT=r.depo; }catch(e){}
+  try{ var b=JSON.parse(localStorage.getItem('bb_buses')||'null'); if(b&&b.depo) BUSES=b.depo; }catch(e){}
+  if(location.protocol==='file:') return;
+  fetch('routes.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(d&&d.depo){ MARSRUT=d.depo; try{localStorage.setItem('bb_routes',JSON.stringify(d));}catch(e){} }
+  }).catch(function(){});
+  fetch('buses.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(d&&d.depo){ BUSES=d.depo; try{localStorage.setItem('bb_buses',JSON.stringify(d));}catch(e){} }
+  }).catch(function(){});
+}
+function busDoldur(depo){
+  var sel=document.getElementById('bus_select'), inp=document.getElementById('bus_no');
+  document.getElementById('bus-hint').style.display=depo?'none':'block';
+  inp.value='';
+  var arr=BUSES[depo]||[];
+  if(!depo){ sel.style.display='none'; inp.style.display='none'; return; }
+  if(!arr.length){ sel.style.display='none'; inp.style.display='block'; return; }
+  sel.innerHTML='<option value="">Seçin...</option>'+arr.map(function(b){
+    return '<option value="'+b[0]+'">'+b[0]+(b[1]?' · '+b[1]:'')+'</option>'; }).join('')+
+    '<option value="'+EL_ILE+'">Siyahıda yoxdur — əl ilə yazım</option>';
+  sel.style.display='block'; inp.style.display='none';
+}
+function onBusSelect(){
+  var v=document.getElementById('bus_select').value, inp=document.getElementById('bus_no');
+  if(v===EL_ILE){ inp.style.display='block'; inp.value=''; inp.focus(); }
+  else { inp.style.display='none'; inp.value=v; }
+  updateProgress();
+}
+function onDepoChange(){
+  var depo=document.getElementById('depo').value;
+  busDoldur(depo);
+  document.getElementById('route-hint').style.display=depo?'none':'block';
+  var sel=document.getElementById('route_select'), man=document.getElementById('route_manual');
+  if(depo&&(!MARSRUT[depo]||!MARSRUT[depo].length)){
+    sel.style.display='none'; man.style.display='block'; man.value='';
+  } else if(MARSRUT[depo]){
+    man.style.display='none'; sel.style.display='block';
+    sel.innerHTML='<option value="">Seçin...</option>'+MARSRUT[depo].map(function(r){return '<option>'+r+'</option>';}).join('');
+  } else { sel.style.display='none'; man.style.display='none'; }
+  updateProgress();
+}
+function getRoute(){
+  var sel=document.getElementById('route_select'), man=document.getElementById('route_manual');
+  return man.style.display!=='none' ? man.value.trim() : sel.value;
+}
+function onRouteChange(){ if(gps.lat) checkRoute(); }
+function selectSeg(f,v,btn){ btn.parentNode.querySelectorAll('.seg-btn').forEach(function(b){b.classList.remove('sel');}); btn.classList.add('sel'); seg[f]=v; updateProgress(); }
+// Avtobusun vəziyyəti (qəza) — nasazlıqdakı ilə eyni seçimlər
+var busSrn='';
+function busCiz(){
+  var v=document.getElementById('bus_status').value;
+  document.getElementById('bus-chips').innerHTML=NZ_HEREKET.map(function(o){
+    return '<button type="button" class="chip'+(v===o?' sel':'')+'" onclick="busSec(\''+o+'\')">'+o+'</button>'; }).join('');
+  var srn=v&&v!==NZ_HEREKET[0];
+  document.getElementById('bus-srn-fg').style.display=srn?'block':'none';
+  if(!srn) busSrn='';
+  document.getElementById('bus-srn-chips').innerHTML=['Bəli','Xeyr','Salonda sərnişin yox idi'].map(function(o){
+    return '<button type="button" class="chip'+(busSrn===o?' sel':'')+'" onclick="busSrn=\''+o+'\';busCiz();updateProgress()">'+o+'</button>'; }).join('');
+}
+function busSec(v){ document.getElementById('bus_status').value=v; busCiz(); updateProgress(); }
+function togglePhoto(){ document.getElementById('photo-hint').style.display=(seg.photo_video==='Bəli')?'block':'none'; }
+// ════ QƏZA TƏFƏRRÜATI: növə görə açılan suallar ════
+var QTIP={
+  toq:{ad:'Nəqliyyat vasitəsi ilə toqquşma', ikon:'🚗',
+       s:['other_type','other_stayed','other_plate','damage','injury','injured_who','injured_count','severity','tech_fault','tech_sys','liability'],
+       liab:['Qarşı tərəf','Avtobus sürücüsü','DYP müəyyən edəcək','Məlum deyil']},
+  pyd:{ad:'Piyada ilə hadisə', ikon:'🚶',
+       s:['ped_how','injury','injured_count','severity','tech_fault','tech_sys','liability'],
+       liab:['Piyada','Avtobus sürücüsü','DYP müəyyən edəcək','Məlum deyil']},
+  srn:{ad:'Salonda sərnişin xəsarəti', ikon:'🧍',
+       s:['srn_how','injured_count','severity','tech_fault','tech_sys','liability'],
+       liab:['Sərnişinin özü','Avtobus sürücüsü','Məlum deyil']},
+  man:{ad:'Maneə ilə toqquşma', ikon:'🚧',
+       s:['obstacle','damage','injury','injured_who','injured_count','severity','tech_fault','tech_sys','liability'],
+       liab:['Avtobus sürücüsü','Yol / hava şəraiti','Məlum deyil']},
+  zer:{ad:'Avtobusa kənar zərər', ikon:'🪨',
+       s:['zer_cause','damage','injury','injured_who','injured_count','severity'],
+       liab:null},
+  dig:{ad:'Digər hadisə', ikon:'❓',
+       s:['desc','injury','injured_who','injured_count','severity','tech_fault','tech_sys','liability'],
+       liab:['Qarşı tərəf','Avtobus sürücüsü','Məlum deyil']}
+};
+var QTIP_IZAH={toq:'avtomobil, motosiklet, velosiped və s.',pyd:'piyadanı vurma, toxunma',
+  srn:'yıxılma, qapıya sıxılma',man:'dirək, səki, ağac, köşk',zer:'daş atılması, vandalizm',dig:'yuxarıdakılara aid deyil'};
+function injuredYes(){ return qtip==='srn' || A.injury==='Bəli'; }
+var Q={
+  other_type:{l:'Qarşı tərəf nə idi?',t:'one',o:['Minik avtomobili','Yük avtomobili','Avtobus','Motosiklet / moped','Velosiped / skuter','Digər'],req:1},
+  other_stayed:{l:'Qarşı tərəf hadisə yerində qaldı?',t:'one',o:['Qaldı','Yayındı (qaçdı)'],req:1},
+  other_plate:{l:'Qarşı tərəfin dövlət nömrəsi',t:'text',ph:'məs. 10-AB-123',
+    when:function(){return !!A.other_stayed;},
+    not:function(){ return A.other_stayed==='Yayındı (qaçdı)' ? 'Nömrəni görmüsünüzsə, mütləq yazın — sonradan tapmaq üçün yeganə məlumatdır.' : 'Görmüsünüzsə yazın.'; }},
+  ped_how:{l:'Nə baş verib?',t:'one',o:['Piyadanı vurub','Piyadaya toxunub','Piyada avtobusa çırpılıb','Digər'],req:1},
+  srn_how:{l:'Necə baş verib?',t:'one',o:['Əyləc / dönmə zamanı yıxılma','Minərkən / düşərkən yıxılma','Qapıya sıxılma','Digər'],req:1},
+  obstacle:{l:'Nəyə dəyib?',t:'one',o:['Dirək / sütun','Səki / bordür','Ağac','Dayanacaq köşkü','Bina / hasar','Digər'],req:1},
+  zer_cause:{l:'Nə baş verib?',t:'one',o:['Daş / əşya atılıb','Salonda vandalizm','Naməlum'],req:1},
+  desc:{l:'Nə baş verdiyini qısa yazın',t:'text',ph:'məs. avtobusun təkəri partlayıb',req:1},
+  damage:{l:'Avtobusun zədələnən hissəsi',t:'multi',req:1,
+    o:function(){ return qtip==='zer' ? ['Şüşə','Güzgü','Salon / oturacaq','Kuzov','Zədə yoxdur']
+                                      : ['Ön','Arxa','Sol yan','Sağ yan','Güzgü','Şüşə','Zədə yoxdur']; },
+    tek:'Zədə yoxdur'},
+  injury:{l:function(){ return qtip==='pyd' ? 'Piyada xəsarət alıb?' : 'Xəsarət alan var?'; },t:'one',o:['Bəli','Xeyr','Məlum deyil'],req:1},
+  injured_who:{l:'Kim xəsarət alıb?',t:'multi',req:1,
+    o:function(){ return qtip==='toq' ? ['Sərnişin','Avtobus sürücüsü','Qarşı tərəf'] : ['Sərnişin','Avtobus sürücüsü','Kənar şəxs']; },
+    when:function(){ return A.injury==='Bəli'; }},
+  injured_count:{l:'Xəsarət alanların sayı',t:'num',req:1,when:injuredYes},
+  severity:{l:'Xəsarətin ağırlığı',t:'one',o:['Yüngül (yerində yardım)','Xəstəxanaya aparılıb','Ağır / həyati təhlükə'],req:1,when:injuredYes},
+  tech_fault:{l:'Qəzaya texniki nasazlıq səbəb olub?',t:'one',o:['Bəli','Xeyr','Məlum deyil'],req:1},
+  tech_sys:{l:'Hansı sistem nasaz idi?',t:'multi',req:1,o:function(){ return Object.keys(NZ); },
+    when:function(){ return A.tech_fault==='Bəli'; }},
+  liability:{l:'İlkin məsuliyyət',t:'one',req:1,o:function(){ return QTIP[qtip].liab; },
+    not:'İlkin göstəricidir — yekun hüquqi qərar deyil'}
+};
+var qtip='', A={}, riskManual=false;
+// ════ TEXNİKİ NASAZLIQ ════
+// Təsnifat RoutePilot-dakı nasazlıq jurnalı ilə eynidir (sistem qrupu → nasazlıq).
+var NZ={
+  'Mühərrik və ötürücü':['Dartı gücü yoxdur','Qeyri-müntəzəm işləyir','İnjektor işığı yanır','Mühərrik qızdırır','Sönüb, hərəkətə gəlmir','Sürətlər qutusu nasazlığı','Mühərrik hissədən səs gəlir','Mühərrik hissədə tüstüləmə','Mühərrik qoruyucusu açılıb'],
+  'Soyutma və yağlama':['Antifriz axır','Yağ axır','Soyutma mayesi azdır','Yağın təzyiqi aşağıdır','Yağ azdır','Patrubka nasazlığı'],
+  'Əyləc və hava sistemi':['ABS işığı yanır','Əyləc nasazlığı','Hava təzyiqi aşağı düşüb','EBS nasazlığı','Barabanlar qızır'],
+  'Kuzov və qapılar':['Qapı nasazlığı','Alt qoruyucu açılıb','Alt hissədən səs gəlir','Güzgü nasazlığı','Kapot nasazlığı','Klik (lyuk) nasazlığı'],
+  'Təkərlər':['Təkər nasazlığı','Təkərin havası azdır','Təkərə yad cisim batıb'],
+  'Asqı və sükan':['Hava yastığı nasazlığı','Sükan nasazlığı','Amortizator nasazlığı'],
+  'Salon və iqlim':['Kondisioner nasazlığı','Peç nasazlığı','Sürücü oturacağı nasaz','Salona su axır','Salondan kəskin qoxu gəlir'],
+  'Elektrik və işıqlandırma':['Şüşəsilən nasazlığı','Çoxfunksionallı qol nasazlığı','Akkumulyator nasazlığı','Fara nasazlığı','Siqnal nasazlığı','Dönmə işığı nasazlığı','Dinamo nasazlığı','Yanğın xəbərdarlığı işığı yanır','Elektrik nasazlığı'],
+  'Bortdaxili avadanlıq':['Kamera nasazlığı'],
+  'Digər':['Ötürücü kəmər nasazlığı','Kəmər nasazlığı']
+};
+var NZ_DIGER='Digər (qeyddə göstərilsin)';
+var NZ_HEREKET=['Xəttə davam edir','Depoya qayıdır','Yerində qalıb — servis gözləyir'];
+var N={};      // nasazlıq cavabları: qrup, ad, hereket, sernisin
+function nzCiz(){
+  var h='<div class="fg"><label class="req">Hansı sistem?</label><div class="chips">'+
+    Object.keys(NZ).map(function(g){ return '<button type="button" class="chip'+(N.qrup===g?' sel':'')+'" onclick="nzSec(\'qrup\',\''+g+'\')">'+g+'</button>'; }).join('')+'</div></div>';
+  if(N.qrup){
+    h+='<div class="fg"><label class="req">Nasazlıq</label><div class="chips">'+
+      NZ[N.qrup].concat([NZ_DIGER]).map(function(f){ return '<button type="button" class="chip'+(N.ad===f?' sel':'')+'" onclick="nzSec(\'ad\',\''+f.replace(/'/g,"\\'")+'\')">'+f+'</button>'; }).join('')+'</div>'+
+      '</div>';
+    if(N.ad){
+      var dig=N.ad===NZ_DIGER;
+      h+='<div class="fg"><label'+(dig?' class="req"':'')+'>Nasazlıq haqqında qeyd</label>'+
+        '<textarea id="nz-qeyd" style="height:70px" placeholder="'+(dig?'Nasazlığı qısa yazın':'İstəsəniz əlavə edin (məs. hansı təkər, nə zaman başlayıb)')+
+        '" oninput="N.qeyd=this.value;updateProgress()">'+esc2(N.qeyd||'')+'</textarea>'+
+        (dig?'<div class="hint">Siyahıda olmayan nasazlığı burada yazın.</div>':'')+'</div>';
+    }
+  }
+  if(N.ad){
+    h+='<div class="fg"><label class="req">Avtobus hərəkət edə bilir?</label><div class="chips">'+
+      NZ_HEREKET.map(function(o){ return '<button type="button" class="chip'+(N.hereket===o?' sel':'')+'" onclick="nzSec(\'hereket\',\''+o+'\')">'+o+'</button>'; }).join('')+'</div></div>';
+  }
+  if(N.hereket && N.hereket!==NZ_HEREKET[0]){
+    h+='<div class="fg" style="margin-bottom:0"><label class="req">Sərnişinlər düşürüldü?</label><div class="chips">'+
+      ['Bəli','Xeyr','Salonda sərnişin yox idi'].map(function(o){ return '<button type="button" class="chip'+(N.sernisin===o?' sel':'')+'" onclick="nzSec(\'sernisin\',\''+o+'\')">'+o+'</button>'; }).join('')+'</div></div>';
+  }
+  document.getElementById('nz-box').innerHTML=h;
+}
+function nzSec(k,v){
+  N[k]=v;
+  if(k==='qrup'){ delete N.ad; }
+  if(k==='hereket' && v===NZ_HEREKET[0]) delete N.sernisin;
+  nzCiz(); bolmeler(); updateProgress();
+}
+
+// ════ BİLDİRİŞ NÖVÜ ════
+var KIND={qeza:{ad:'Qəza / hadisə',ikon:'⚠️',izah:'toqquşma, xəsarət, zərər',tip:'Qəza / hadisə',duyme:'Qəzanı bildir →'},
+          nasaz:{ad:'Texniki nasazlıq',ikon:'🔧',izah:'avtobusda nasazlıq',tip:'Texniki nasazlıq',duyme:'Nasazlığı bildir →'}};
+var kind='';
+function kindCiz(){
+  document.getElementById('kind-grid').innerHTML=Object.keys(KIND).map(function(k){
+    return '<button class="tip-btn'+(kind===k?' sel':'')+'" onclick="kindSec(\''+k+'\')"><span class="icon">'+KIND[k].ikon+
+      '</span><span class="lbl">'+KIND[k].ad+'</span><span class="hint" style="display:block;margin-top:4px">'+KIND[k].izah+'</span></button>';
+  }).join('');
+}
+function kindSec(k){
+  kind=k; tip=KIND[k].tip; kindCiz();
+  document.getElementById('sbtn').textContent=KIND[k].duyme;
+  document.getElementById('lt-label').className = k==='qeza' ? 'req' : '';
+  if(k==='nasaz') nzCiz();
+  bolmeler(); updateProgress();
+}
+// Hansı blokların görünəcəyi: seçimlər etdikcə aşağıdakı bölmələr açılır.
+function bolmeler(){
+  var q=kind==='qeza', n=kind==='nasaz';
+  document.getElementById('main-blok').style.display=kind?'block':'none';
+  document.getElementById('qeza-sec').style.display=q?'block':'none';
+  document.getElementById('after-type').style.display=(q&&qtip)?'block':'none';
+  document.getElementById('nasaz-blok').style.display=n?'block':'none';
+  document.getElementById('son-blok').style.display=((q&&qtip)||(n&&N.ad))?'block':'none';
+}
+
+function qOps(q){ return typeof q.o==='function' ? q.o() : q.o; }
+function qLbl(q){ return typeof q.l==='function' ? q.l() : q.l; }
+function qVisible(k){ var q=Q[k]; return !q.when || q.when(); }
+function qtipCiz(){
+  document.getElementById('qtip-grid').innerHTML=Object.keys(QTIP).map(function(k){
+    return '<button class="tip-btn'+(qtip===k?' sel':'')+'" onclick="qtipSec(\''+k+'\')"><span class="icon">'+QTIP[k].ikon+
+           '</span><span class="lbl">'+QTIP[k].ad+'</span><span class="hint" style="display:block;margin-top:4px">'+QTIP_IZAH[k]+'</span></button>';
+  }).join('');
+}
+function qtipSec(k){
+  if(qtip!==k){ A={}; riskManual=false; document.getElementById('risk_color').value=''; }
+  qtip=k; qtipCiz(); bolmeler();
+  document.getElementById('det-title').textContent=QTIP[k].ad;
+  detCiz(); updateProgress();
+}
+function esc2(x){ return String(x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function detCiz(){
+  if(!qtip){ return; }
+  // görünməyən sualların cavabları silinir (məs. «Xəsarət: Xeyr» seçiləndə say və ağırlıq)
+  QTIP[qtip].s.forEach(function(k){ if(!qVisible(k)) delete A[k]; });
+  var h='';
+  QTIP[qtip].s.forEach(function(k){
+    if(k==='liability' && !QTIP[qtip].liab) return;
+    if(!qVisible(k)) return;
+    var q=Q[k];
+    h+='<div class="fg"><label'+(q.req?' class="req"':'')+'>'+qLbl(q)+'</label>';
+    if(q.t==='one'||q.t==='multi'){
+      h+='<div class="chips">'+qOps(q).map(function(o){
+        var sel = q.t==='one' ? A[k]===o : (A[k]||[]).indexOf(o)>-1;
+        return '<button type="button" class="chip'+(q.t==='multi'?' multi':'')+(sel?' sel':'')+'" onclick="qSec(\''+k+'\',\''+esc2(o).replace(/'/g,"\\'")+'\')">'+esc2(o)+'</button>';
+      }).join('')+'</div>';
+    } else if(q.t==='num'){
+      h+='<input type="number" min="1" max="99" inputmode="numeric" value="'+(A[k]||'')+'" oninput="A[\''+k+'\']=this.value;riskTeklif();updateProgress()" placeholder="nəfər">';
+    } else {
+      h+='<input type="text" value="'+esc2(A[k]||'')+'" placeholder="'+esc2(q.ph||'')+'" oninput="A[\''+k+'\']=this.value;updateProgress()">';
+    }
+    if(q.not) h+='<div class="hint">'+(typeof q.not==='function'?q.not():q.not)+'</div>';
+    h+='</div>';
+  });
+  document.getElementById('det-box').innerHTML=h;
+  svcCiz(); riskTeklif();
+}
+function qSec(k,v){
+  var q=Q[k];
+  if(q.t==='one'){ A[k]=v; }
+  else {
+    var arr=(A[k]||[]).slice(), i=arr.indexOf(v);
+    if(i>-1) arr.splice(i,1);
+    else if(q.tek && v===q.tek) arr=[v];                       // «Zədə yoxdur» təkdir
+    else { arr=arr.filter(function(x){return x!==q.tek;}); arr.push(v); }
+    A[k]=arr;
+  }
+  detCiz(); updateProgress();
+}
+// Xidmətlər: 103 yalnız xəsarət olanda; «Heç biri» digərləri ilə birlikdə seçilmir
+var SVC=[];
+function svcOps(){ var o=['102 — Yol polisi']; if(injuredYes()) o.push('103 — Təcili yardım'); o.push('Sığorta şirkəti','Heç biri'); return o; }
+function svcCiz(){
+  var ops=svcOps(); SVC=SVC.filter(function(x){return ops.indexOf(x)>-1;});
+  document.getElementById('svc-box').innerHTML='<div class="fg"><label class="req">Kim çağırılıb / məlumatlandırılıb?</label><div class="chips">'+
+    ops.map(function(o){ return '<button type="button" class="chip multi'+(SVC.indexOf(o)>-1?' sel':'')+'" onclick="svcSec(\''+o+'\')">'+o+'</button>'; }).join('')+'</div></div>';
+}
+function svcSec(v){
+  var i=SVC.indexOf(v);
+  if(i>-1) SVC.splice(i,1);
+  else if(v==='Heç biri') SVC=['Heç biri'];
+  else { SVC=SVC.filter(function(x){return x!=='Heç biri';}); SVC.push(v); }
+  svcCiz(); updateProgress();
+}
+// Risk: cavablara görə avtomatik təklif (sürücü dəyişə bilər)
+function riskTeklif(){
+  var r='', sev=A.severity;
+  if(injuredYes()){
+    r = sev==='Ağır / həyati təhlükə' ? 'Qara' : sev==='Xəstəxanaya aparılıb' ? 'Qırmızı' : sev ? 'Narıncı' : '';
+  } else if(A.injury==='Məlum deyil'){ r='Narıncı'; }
+  else if(qtip){
+    var d=A.damage||[];
+    r = (d.length && d.every(function(x){return x==='Güzgü'||x==='Şüşə'||x==='Zədə yoxdur';})) ? 'Yaşıl' : 'Sarı';
+  }
+  var el=document.getElementById('risk_color'), hint=document.getElementById('risk-hint');
+  if(!riskManual && r){ el.value=r; }
+  hint.innerHTML = r ? (riskManual && el.value!==r ? 'Cavablara görə təklif: <b>'+r+'</b> — siz <b>'+el.value+'</b> seçmisiniz.' :
+                        'Cavablara görə avtomatik seçildi<span class="auto-badge">avto</span> — lazım olsa dəyişin.') : '';
+}
+function detMetn(){
+  if(!qtip) return '';
+  var parts=[];
+  QTIP[qtip].s.forEach(function(k){
+    if(k==='liability'||!qVisible(k)) return;
+    var v=A[k]; if(v===undefined||v===''||(Array.isArray(v)&&!v.length)) return;
+    parts.push(qLbl(Q[k]).replace(/\?$/,'')+': '+(Array.isArray(v)?v.join(', '):v));
+  });
+  return parts.join('; ');
+}
+function findLocation(){
+  if(!navigator.geolocation){ alert("Cihaz GPS dəstəkləmir."); return; }
+  var btn=document.getElementById('gps-btn'); btn.disabled=true; btn.textContent="📍 Axtarılır...";
+  navigator.geolocation.getCurrentPosition(function(pos){
+    gps.lat=+pos.coords.latitude.toFixed(6); gps.lon=+pos.coords.longitude.toFixed(6);
+    btn.disabled=false; btn.textContent="📍 Yenidən tap";
+    showDrvMap(); findNearest(); reverseGeocode(); checkRoute(); updateProgress();
+  }, function(){
+    btn.disabled=false; btn.textContent="📍 Avtomatik tap";
+    alert("GPS alınmadı. İcazə verin və ya əl ilə ünvan yazın.");
+  }, {enableHighAccuracy:true, timeout:10000});
+}
+function showDrvMap(){
+  var el=document.getElementById('drv-map'); el.style.display='block';
+  document.getElementById('map-hint').style.display='block';
+  if(!drvMap){
+    drvMap=L.map('drv-map').setView([gps.lat,gps.lon],16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(drvMap);
+    drvMarker=L.marker([gps.lat,gps.lon],{draggable:true}).addTo(drvMap);
+    drvMarker.on('dragend',function(){ var p=drvMarker.getLatLng(); gps.lat=+p.lat.toFixed(6); gps.lon=+p.lng.toFixed(6); findNearest(); reverseGeocode(); checkRoute(); });
+  } else { drvMap.setView([gps.lat,gps.lon],16); drvMarker.setLatLng([gps.lat,gps.lon]); }
+  setTimeout(function(){ drvMap.invalidateSize(); },200);
+}
+function haversine(a,b,c,d){var R=6371,dLat=(c-a)*Math.PI/180,dLon=(d-b)*Math.PI/180,x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function findNearest(){
+  if(!gps.lat) return;
+  var arr=STOPS.map(function(s){return [haversine(gps.lat,gps.lon,s[0],s[1]),s];}).sort(function(a,b){return a[0]-b[0];}).slice(0,3);
+  nearest={stop:arr[0][1], dist:arr[0][0], top3:arr.map(function(x){return x[1];})};
+  var box=document.getElementById('stop-box'); box.style.display='block';
+  box.innerHTML='Ən yaxın dayanacaq:<br><span class="sb-stop">'+nearest.stop[2]+'</span><br>'+(nearest.dist*1000).toFixed(0)+' m məsafədə';
+}
+function checkRoute(){
+  var r=getRoute();
+  var ok=document.getElementById('route-ok'), warn=document.getElementById('route-warn');
+  ok.style.display='none'; warn.style.display='none'; routeMatch="";
+  if(!r||!nearest) return;
+  // Marşrut data.js-in dayanacaq məlumatında yoxdursa (yeni marşrut) — yoxlama aparılmır
+  if(!MARSRUT_XETT){ MARSRUT_XETT={}; Object.keys(STOP_ROUTES).forEach(function(k){ STOP_ROUTES[k].forEach(function(x){ MARSRUT_XETT[x]=1; }); }); }
+  if(!MARSRUT_XETT[r]) return;
+  var here={};
+  nearest.top3.forEach(function(s){ (STOP_ROUTES[s[3]]||[]).forEach(function(rt){here[rt]=1;}); });
+  if(here[r]){ routeMatch="Uyğun"; ok.style.display='block'; ok.textContent='✓ '+r+' nömrəli marşrut bu ərazidən keçir.'; }
+  else { routeMatch="Uyğun deyil"; warn.style.display='block'; warn.innerHTML='⚠ '+r+' marşrutu bu ərazidən keçmir. Marşrutu yoxlayın (yenə də göndərə bilərsiniz).'; }
+}
+function reverseGeocode(){
+  if(!gps.lat) return;
+  fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+gps.lat+'&lon='+gps.lon+'&zoom=18&accept-language=az')
+    .then(function(r){return r.json();})
+    .then(function(d){ if(d&&d.display_name){ document.getElementById('location_address').value=d.display_name; updateProgress(); } })
+    .catch(function(){});
+}
+function updateProgress(){
+  function has(id){ var e=document.getElementById(id); return e&&e.value.trim(); }
+  var total=7, filled=(has('depo')?1:0)+(has('driver_id')?1:0)+(has('bus_no')?1:0)+(getRoute()?1:0)+
+    (has('incident_date')?1:0)+(has('incident_time')?1:0)+(kind?1:0);
+  var conf=document.getElementById('driver_confirmed').checked?1:0;
+  if(kind==='qeza'){
+    total+=2; filled+=(has('location_type')?1:0)+(qtip?1:0);
+    if(qtip){
+      QTIP[qtip].s.forEach(function(k){
+        if(k==='liability'&&!QTIP[qtip].liab) return;
+        if(!qVisible(k)||!Q[k].req) return;
+        total++; var v=A[k]; if(v&&(!Array.isArray(v)||v.length)) filled++;
+      });
+      total+=5; filled+=(SVC.length?1:0)+(has('risk_color')?1:0)+(has('bus_status')?1:0)+(fval('bus_status')&&fval('bus_status')!==NZ_HEREKET[0]?(busSrn?1:0):1)+(seg.photo_video?1:0)+conf;
+      total++;
+    } else total+=10;
+  } else if(kind==='nasaz'){
+    var need=['qrup','ad','hereket'].concat(N.hereket&&N.hereket!==NZ_HEREKET[0]?['sernisin']:[]);
+    total+=need.length+1; need.forEach(function(k){ if(N[k]) filled++; });
+    filled+=conf;
+    if(N.ad===NZ_DIGER){ total++; if((N.qeyd||'').trim()) filled++; }
+  } else total+=10;
+  var pct=Math.min(100,Math.round(filled/total*100));
+  document.getElementById('prog').style.width=pct+'%';
+  document.getElementById('prog-text').textContent=pct+'% dolu';
+}
+function fval(id){var e=document.getElementById(id);return e?e.value.trim():"";}
+function buildPayload(){
+  var p={action:"addIncident",depo:fval('depo'),driver_id:fval('driver_id'),route:getRoute(),
+    bus_no:fval('bus_no'),incident_type:tip,note:fval('note'),
+    route_direction:(typeof ROUTE_DIR!=='undefined'&&ROUTE_DIR[getRoute()])||""};
+  p.incident_date=fval('incident_date'); p.incident_time=fval('incident_time');
+  p.location_type=fval('location_type'); p.location_address=fval('location_address');
+  p.lat=gps.lat||""; p.lon=gps.lon||"";
+  if(nearest){ p.nearest_stop_code=nearest.stop[3]; p.nearest_stop_name=nearest.stop[2]; }
+  p.route_match=routeMatch;
+  p.driver_confirmed=document.getElementById('driver_confirmed').checked?"Bəli":"Xeyr";
+  if(kind==='nasaz'){
+    // Nasazlıq jurnalının sahələri: sistem qrupu, nasazlıq, aradan qaldırılma (xətdə / depoda)
+    p.system_group=N.qrup||""; p.fault_name=N.ad||""; p.fault_note=(N.qeyd||"").trim();
+    p.incident_category=N.qrup||"";
+    p.resolution = N.hereket===NZ_HEREKET[0] ? 'hereket' : 'depo';
+    p.bus_status=N.hereket||"";
+    p.incident_details=[N.qrup,N.ad,(N.qeyd||'').trim(),N.hereket].concat(N.sernisin?['Sərnişinlər düşürüldü: '+N.sernisin]:[]).filter(Boolean).join('; ');
+    p.details_json=JSON.stringify(N);
+    return p;
+  }
+  p.incident_category=qtip?QTIP[qtip].ad:"";
+  p.incident_details=detMetn();                 // insan oxuyan təfərrüat
+  p.details_json=JSON.stringify(A);             // RP üçün strukturlaşdırılmış cavablar
+  p.injury=qtip==='srn'?'Bəli':(A.injury||'');
+  p.injured_count=A.injured_count||''; p.injury_severity=A.severity||'';
+  p.tech_fault=A.tech_fault?(A.tech_fault+(A.tech_sys&&A.tech_sys.length?' — '+A.tech_sys.join(', '):'')):'';
+  p.emergency_insurance=SVC.join(', ');
+  p.risk_color=fval('risk_color');
+  p.initial_liability=qtip==='zer'?'Kənar şəxs':(A.liability||'');
+  p.bus_status=fval('bus_status');
+  p.resolution = p.bus_status===NZ_HEREKET[0] ? 'hereket' : (p.bus_status ? 'depo' : '');
+  if(busSrn) p.incident_details=(p.incident_details?p.incident_details+'; ':'')+'Sərnişinlər düşürüldü: '+busSrn;
+  p.photo_video=seg.photo_video;
+  p.driver_confirmed=document.getElementById('driver_confirmed').checked?"Bəli":"Xeyr";
+  p.lat=gps.lat||""; p.lon=gps.lon||"";
+  if(nearest){ p.nearest_stop_code=nearest.stop[3]; p.nearest_stop_name=nearest.stop[2]; }
+  p.route_match=routeMatch;
+  return p;
+}
+function validateForm(){
+  if(!fval('depo')||!fval('driver_id')||!getRoute()||!fval('bus_no')) return "Sürücü və avtobus məlumatlarını doldurun.";
+  if(!fval('incident_date')||!fval('incident_time')) return "Hadisənin tarix və saatını seçin.";
+  if(!kind) return "Nə bildirdiyinizi seçin: qəza və ya texniki nasazlıq.";
+  if(kind==='nasaz'){
+    if(!N.qrup) return "Nasazlığın sistemini seçin.";
+    if(!N.ad) return "Nasazlığı seçin.";
+    if(N.ad===NZ_DIGER&&!(N.qeyd||'').trim()) return "Nasazlığı «Nasazlıq haqqında qeyd» sahəsində yazın.";
+    if(!N.hereket) return "Avtobusun hərəkət edə bildiyini seçin.";
+    if(N.hereket!==NZ_HEREKET[0]&&!N.sernisin) return "Sərnişinlərin düşürüldüyünü seçin.";
+    if(!document.getElementById('driver_confirmed').checked) return "Məlumatların doğruluğunu təsdiq edin.";
+    return null;
+  }
+  if(!fval('location_type')) return "Yer tipini seçin.";
+  if(!qtip) return "Nə baş verdiyini seçin.";
+  var ks=QTIP[qtip].s;
+  for(var i=0;i<ks.length;i++){
+    var k=ks[i], q=Q[k];
+    if(k==='liability'&&!QTIP[qtip].liab) continue;
+    if(!q.req||!qVisible(k)) continue;
+    var v=A[k];
+    if(!v||(Array.isArray(v)&&!v.length)) return "«"+qLbl(q).replace(/\?$/,'')+"» sualını cavablandırın.";
+    if(q.t==='num'&&!(+v>=1)) return "Xəsarət alanların sayını düzgün yazın.";
+  }
+  if(!SVC.length) return "Kimin çağırıldığını seçin (yoxdursa «Heç biri»).";
+  if(!fval('risk_color')) return "Risk səviyyəsini seçin.";
+  if(!fval('bus_status')) return "Avtobusun hərəkət edə bildiyini seçin.";
+  if(fval('bus_status')!==NZ_HEREKET[0]&&!busSrn) return "Sərnişinlərin düşürüldüyünü seçin.";
+  if(!seg.photo_video) return "Foto/video çəkilib-çəkilmədiyini seçin.";
+  if(!document.getElementById('driver_confirmed').checked) return "Məlumatların doğruluğunu təsdiq edin.";
+  return null;
+}
+function submitIncident(){
+  var err=document.getElementById('err'); err.style.display='none';
+  var v=validateForm(); if(v){ err.textContent=v; err.style.display='block'; err.scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  if(SU==="BURAYA_APPS_SCRIPT_URL_YAZIN"){ alert("Script URL qeyd olunmayıb!"); return; }
+  var btn=document.getElementById('sbtn'); btn.disabled=true; btn.textContent="Göndərilir...";
+  var payload=buildPayload();
+  var bitir=function(){ btn.disabled=false; btn.textContent="Bildir →"; };
+  tekrarYoxla(payload,function(davam){
+    if(!davam){ bitir(); return; }
+    if(davam==='tekrar') payload.repeat_confirmed=true;
+    if(!navigator.onLine){ queueAndShow(payload); bitir(); return; }
+    gonder(payload,bitir);
+  });
+}
+// Son 1 saatda eyni avtobus və ya sürücü üçün qəza bildirilibsə — soruşulur.
+// davam: false — dayandır; true — göndər; 'tekrar' — sürücü təkrarı təsdiqlədi.
+function tekrarYoxla(payload,cb){
+  var nasaz=payload.incident_type==='Texniki nasazlıq', ad=nasaz?'nasazlıq bildirişiniz':'qəzanız';
+  function sorus(vaxt,id){
+    cb(confirm("Sizin "+vaxt+"-da qeydə alınmış "+ad+" var"+(id?" ("+id+")":"")+
+               ".\n\nYeni "+(nasaz?'nasazlıq':'qəza')+" bildirmək istəyirsiniz?")?'tekrar':false);
+  }
+  // Oflayn növbədə (hələ göndərilməmiş) son 1 saatın eyni növlü bildirişi
+  try{
+    var q=JSON.parse(localStorage.getItem('bb_queue')||'[]'), now=Date.now();
+    for(var i=q.length-1;i>=0;i--){
+      var p=q[i].payload||{};
+      if(p.incident_type===payload.incident_type&&now-q[i].ts<3600000&&
+         ((p.bus_no&&p.bus_no.toUpperCase()===payload.bus_no.toUpperCase())||(p.driver_id&&p.driver_id===payload.driver_id))){
+        var t=new Date(q[i].ts); sorus(('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2),''); return;
+      }
+    }
+  }catch(e){}
+  if(!navigator.onLine||!SU){ cb(true); return; }
+  var to=setTimeout(function(){ to=null; cb(true); },8000);     // yavaş şəbəkədə bildirişi saxlamırıq
+  fetch(SU+"?action=checkRecent&type="+encodeURIComponent(payload.incident_type)+"&bus_no="+encodeURIComponent(payload.bus_no)+"&driver_id="+encodeURIComponent(payload.driver_id))
+    .then(function(r){return r.json();}).then(function(d){
+      if(!to) return; clearTimeout(to); to=null;
+      if(d&&d.found) sorus(d.time,d.incident_id); else cb(true);
+    }).catch(function(){ if(to){ clearTimeout(to); to=null; cb(true); } });
+}
+function gonder(payload,bitir){
+  sendFull(payload).then(function(res){
+    if(res&&res.success){ aciqSaxla(payload,res); showSuccess(res.id,false,payload); }
+    else throw new Error();
+  }).catch(function(){ queueAndShow(payload);
+  }).finally(bitir);
+}
+function sendFull(payload){
+  return fetch(SU,{method:"POST",body:JSON.stringify(payload)}).then(function(r){return r.json();});
+}
+function queueAndShow(payload){
+  var q=JSON.parse(localStorage.getItem('bb_queue')||'[]');
+  q.push({payload:payload,ts:Date.now()});
+  try{ localStorage.setItem('bb_queue',JSON.stringify(q)); }
+  catch(e){ alert("Telefonun yaddaşı doludur — bildiriş saxlanmadı. İnternet olanda yenidən göndərin."); return; }
+  showSuccess("(oflayn)",true,payload);
+}
+function flushQueue(){
+  var q=JSON.parse(localStorage.getItem('bb_queue')||'[]');
+  if(!q.length||!navigator.onLine||!SU||SU==="BURAYA_APPS_SCRIPT_URL_YAZIN") return;
+  var remaining=[];
+  (function next(i){
+    if(i>=q.length){ localStorage.setItem('bb_queue',JSON.stringify(remaining)); aciqCiz(); return; }
+    sendFull(q[i].payload).then(function(res){
+      if(res&&res.success){ aciqSaxla(q[i].payload,res); } else { remaining.push(q[i]); }
+    }).catch(function(){ remaining.push(q[i]); }).finally(function(){ next(i+1); });
+  })(0);
+}
+// ════ AÇIQ BİLDİRİŞLƏR (avtobus xətdən çıxıbsa) ════
+// Bildiriş göndəriləndə server bağlama açarı qaytarır — yalnız bu telefonda saxlanılır.
+function aciqOxu(){ try{ return JSON.parse(localStorage.getItem('bb_open')||'[]'); }catch(e){ return []; } }
+function aciqYaz(a){ try{ localStorage.setItem('bb_open',JSON.stringify(a)); }catch(e){} }
+function aciqdir(p){ return p.bus_status && p.bus_status!=='Xəttə davam edir'; }
+function aciqSaxla(p,res){
+  if(!aciqdir(p)||!res||!res.id) return;
+  var a=aciqOxu().filter(function(x){return x.id!==res.id;});
+  a.unshift({id:res.id, key:res.close_key||'', tip:p.incident_type, bus:p.bus_no,
+             start:(p.incident_date||'')+' '+(p.incident_time||''), ad:p.fault_name||p.incident_category||''});
+  aciqYaz(a); aciqCiz();
+}
+function aciqCiz(){
+  var a=aciqOxu(), card=document.getElementById('aciq-card');
+  card.style.display=a.length?'block':'none';
+  document.getElementById('aciq-list').innerHTML=a.map(function(x,i){
+    var d=x.start.split(' '), tarix=d[0]?d[0].split('-').reverse().join('.'):'';
+    return '<div class="aciq-item"><div class="ai-txt"><b>'+x.id+'</b> · '+(x.tip==='Texniki nasazlıq'?'Nasazlıq':'Qəza')+
+      '<br>'+esc2(x.bus)+(x.ad?' · '+esc2(x.ad):'')+'<br>'+tarix+' '+(d[1]||'')+'</div>'+
+      '<button class="aciq-btn" onclick="baglaAc('+i+')">Bağla</button></div>';
+  }).join('');
+}
+var BAGLA_HOW=['Yerində düzəldildi','Servis düzəltdi','Depoya yedəkləndi','Avtobus dəyişdirildi'];
+var baglaI=-1, baglaHow='';
+function baglaAc(i){
+  var x=aciqOxu()[i]; if(!x) return;
+  baglaI=i; baglaHow='';
+  document.getElementById('close-title').textContent=x.id+' — bağla';
+  document.getElementById('close-info').textContent=esc2(x.bus)+(x.ad?' · '+x.ad:'')+' · başlayıb: '+x.start.split(' ')[0].split('-').reverse().join('.')+' '+(x.start.split(' ')[1]||'');
+  var d=new Date(), p=function(n){return ('0'+n).slice(-2);};
+  document.getElementById('close_date').value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  document.getElementById('close_time').value=p(d.getHours())+':'+p(d.getMinutes());
+  document.getElementById('close-err').style.display='none';
+  baglaHowCiz(); baglaMuddet();
+  document.getElementById('close-bg').style.display='block';
+}
+function baglaKapat(){ document.getElementById('close-bg').style.display='none'; }
+function baglaHowCiz(){
+  document.getElementById('close-how').innerHTML=BAGLA_HOW.map(function(o){
+    return '<button type="button" class="chip'+(baglaHow===o?' sel':'')+'" onclick="baglaHow=\''+o+'\';baglaHowCiz()">'+o+'</button>'; }).join('');
+}
+function baglaDeqiqe(){
+  var x=aciqOxu()[baglaI]; if(!x) return null;
+  var a=new Date(x.start.replace(' ','T')), b=new Date(document.getElementById('close_date').value+'T'+document.getElementById('close_time').value);
+  if(isNaN(a)||isNaN(b)) return null;
+  return Math.round((b-a)/60000);
+}
+function baglaMuddet(){
+  var m=baglaDeqiqe(), el=document.getElementById('close-dur');
+  if(m===null){ el.textContent=''; return; }
+  el.innerHTML = m<0 ? 'Bitmə vaxtı başlama vaxtından əvvəl ola bilməz.'
+                     : 'Yolda qalma müddəti: <span class="sb-stop">'+Math.floor(m/60)+' saat '+(m%60)+' dəq</span>';
+}
+function baglaGonder(){
+  var x=aciqOxu()[baglaI], err=document.getElementById('close-err'), m=baglaDeqiqe();
+  err.style.display='none';
+  function xeta(t){ err.textContent=t; err.style.display='block'; }
+  if(!x) return;
+  if(m===null) return xeta("Tarix və saatı seçin.");
+  if(m<0) return xeta("Bitmə vaxtı başlama vaxtından əvvəl ola bilməz.");
+  if(!baglaHow) return xeta("Necə həll olunduğunu seçin.");
+  if(!navigator.onLine) return xeta("Bağlamaq üçün internet lazımdır.");
+  if(!SU||SU==="BURAYA_APPS_SCRIPT_URL_YAZIN") return xeta("Script URL qeyd olunmayıb!");
+  var btn=document.getElementById('close-btn'); btn.disabled=true; btn.textContent='Göndərilir...';
+  fetch(SU,{method:"POST",body:JSON.stringify({action:"closeIncident",id:x.id,close_key:x.key,
+        end_at:document.getElementById('close_date').value+' '+document.getElementById('close_time').value+':00',how:baglaHow})})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d&&d.success){
+        aciqYaz(aciqOxu().filter(function(y){return y.id!==x.id;})); aciqCiz(); baglaKapat();
+        alert(x.id+" bağlandı. Yolda qalma müddəti: "+Math.floor(m/60)+" saat "+(m%60)+" dəq.");
+      } else xeta((d&&d.error)||"Bağlanmadı.");
+    }).catch(function(){ xeta("Şəbəkə xətası — yenidən cəhd edin."); })
+    .finally(function(){ btn.disabled=false; btn.textContent='Bağla'; });
+}
+function showSuccess(id,queued,payload){
+  document.getElementById('open-note').style.display=(payload&&aciqdir(payload))?'block':'none';
+  document.getElementById('success-title').textContent = kind==='nasaz' ? 'Nasazlıq bildirişi qəbul edildi' : 'Qəza bildirişi qəbul edildi';
+  document.getElementById('form-section').style.display='none';
+  document.getElementById('success-screen').style.display='block';
+  document.getElementById('success-id').textContent=queued?"Gözləyir...":id;
+  document.getElementById('queued-note').style.display=queued?'block':'none';
+  window.scrollTo(0,0);
+}
+function resetForm(){
+  ['depo','driver_id','route_manual','bus_no','note','incident_date','incident_time','location_type','location_address','risk_color','bus_status'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('route_select').style.display='none';document.getElementById('route_manual').style.display='none';
+  document.getElementById('route-hint').style.display='block';
+  document.querySelectorAll('#view-bildir .seg-btn').forEach(function(b){b.classList.remove('sel');});
+  document.getElementById('driver_confirmed').checked=false;
+  seg={injury:"",photo_video:""};gps={lat:null,lon:null};nearest=null;routeMatch="";
+  document.getElementById('photo-hint').style.display='none';
+  document.getElementById('bus_select').style.display='none';document.getElementById('bus_no').style.display='none';
+  document.getElementById('bus-hint').style.display='block';
+  qtip='';A={};SVC=[];riskManual=false;N={};kind='';tip='';qtipCiz();kindCiz();bolmeler();
+  document.getElementById('sbtn').textContent='Bildir →';
+  busSrn='';busCiz();
+  document.getElementById('drv-map').style.display='none';document.getElementById('stop-box').style.display='none';
+  document.getElementById('route-ok').style.display='none';document.getElementById('route-warn').style.display='none';
+  document.getElementById('form-section').style.display='block';
+  document.getElementById('success-screen').style.display='none';
+  bugunTarix(); aciqCiz();
+  updateProgress();window.scrollTo(0,0);
+}
+
+
+// ════ BAŞLANĞIC ════
+function bugunTarix(){
+  var d=new Date(), p=function(n){return ('0'+n).slice(-2);};
+  document.getElementById('incident_date').value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  document.getElementById('incident_time').value=p(d.getHours())+':'+p(d.getMinutes());
+}
+(function(){
+  siyahiYukle();
+  aciqCiz();
+  kindCiz();
+  busCiz();
+  qtipCiz();
+  bugunTarix();
+  updateProgress();
+  flushQueue();
+})();
+</script>
+</body>
+</html>
