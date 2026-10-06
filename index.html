@@ -676,7 +676,7 @@ function updateProgress(){
 }
 function fval(id){var e=document.getElementById(id);return e?e.value.trim():"";}
 function buildPayload(){
-  var p={action:"addIncident",depo:fval('depo'),driver_id:fval('driver_id'),route:getRoute(),
+  var p={action:"addIncident",client_id:hex32(),close_key:hex32(),depo:fval('depo'),driver_id:fval('driver_id'),route:getRoute(),
     bus_no:fval('bus_no'),incident_type:tip,note:fval('note'),
     route_direction:(typeof ROUTE_DIR!=='undefined'&&ROUTE_DIR[getRoute()])||""};
   p.incident_date=fval('incident_date'); p.incident_time=fval('incident_time');
@@ -796,11 +796,27 @@ function gonder(payload,bitir){
     queueAndShow(payload, navigator.onLine ? 'server' : 'oflayn');
   }).finally(bitir);
 }
+function hex32(){
+  var a=new Uint8Array(16);
+  try{ crypto.getRandomValues(a); }catch(e){ for(var i=0;i<16;i++) a[i]=Math.floor(Math.random()*256); }
+  return Array.prototype.map.call(a,function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+}
+// Bildiriş yazıldımı? (POST cavabı telefona çatmayanda)
+function tapCid(cid){
+  return fetch(SU+"?action=findClient&cid="+encodeURIComponent(cid)).then(function(r){return r.json();});
+}
 function sendFull(payload){
   return fetch(SU,{method:"POST",body:JSON.stringify(payload)}).then(function(r){
     return r.text().then(function(t){
       try{ return JSON.parse(t); }
       catch(e){ throw new Error('cavab JSON deyil (HTTP '+r.status+')'); }
+    });
+  }).catch(function(e){
+    if(!payload.client_id) throw e;
+    // Cavab oxunmadı — bildirişin yazılıb-yazılmadığını yoxlayırıq
+    return tapCid(payload.client_id).then(function(d){
+      if(d&&d.found) return {success:true, id:d.id, close_key:payload.close_key};
+      throw e;
     });
   });
 }
@@ -813,6 +829,9 @@ function queueAndShow(payload,sebeb){
 }
 function flushQueue(){
   var q=JSON.parse(localStorage.getItem('bb_queue')||'[]');
+  // client_id-siz köhnə növbə elementləri hər açılışda cədvələ yenidən yazılırdı — atılır
+  var q2=q.filter(function(x){ return x&&x.payload&&x.payload.client_id; });
+  if(q2.length!==q.length){ q=q2; localStorage.setItem('bb_queue',JSON.stringify(q)); }
   if(!q.length||!navigator.onLine||!SU||SU==="BURAYA_APPS_SCRIPT_URL_YAZIN") return;
   var remaining=[];
   (function next(i){
@@ -830,7 +849,7 @@ function aciqdir(p){ return p.bus_status && p.bus_status!=='Xəttə davam edir';
 function aciqSaxla(p,res){
   if(!aciqdir(p)||!res||!res.id) return;
   var a=aciqOxu().filter(function(x){return x.id!==res.id;});
-  a.unshift({id:res.id, key:res.close_key||'', tip:p.incident_type, bus:p.bus_no,
+  a.unshift({id:res.id, key:res.close_key||p.close_key||'', cid:p.client_id||'', tip:p.incident_type, bus:p.bus_no,
              start:(p.incident_date||'')+' '+(p.incident_time||''), ad:p.fault_name||p.incident_category||''});
   aciqYaz(a); aciqCiz();
 }
@@ -886,14 +905,22 @@ function baglaGonder(){
   if(!navigator.onLine) return xeta("Bağlamaq üçün internet lazımdır.");
   if(!SU||SU==="BURAYA_APPS_SCRIPT_URL_YAZIN") return xeta("Script URL qeyd olunmayıb!");
   var btn=document.getElementById('close-btn'); btn.disabled=true; btn.textContent='Göndərilir...';
+  function bitdi(){
+    aciqYaz(aciqOxu().filter(function(y){return y.id!==x.id;})); aciqCiz(); baglaKapat();
+    alert(x.id+" bağlandı. Yolda qalma müddəti: "+Math.floor(m/60)+" saat "+(m%60)+" dəq.");
+  }
   fetch(SU,{method:"POST",body:JSON.stringify({action:"closeIncident",id:x.id,close_key:x.key,
         end_at:document.getElementById('close_date').value+' '+document.getElementById('close_time').value+':00',how:baglaHow})})
     .then(function(r){return r.json();}).then(function(d){
-      if(d&&d.success){
-        aciqYaz(aciqOxu().filter(function(y){return y.id!==x.id;})); aciqCiz(); baglaKapat();
-        alert(x.id+" bağlandı. Yolda qalma müddəti: "+Math.floor(m/60)+" saat "+(m%60)+" dəq.");
-      } else xeta((d&&d.error)||"Bağlanmadı.");
-    }).catch(function(){ xeta("Şəbəkə xətası — yenidən cəhd edin."); })
+      if(d&&(d.success||/artıq bağlanıb/.test(d.error||''))) bitdi();
+      else xeta((d&&d.error)||"Bağlanmadı.");
+    }).catch(function(){
+      // Cavab oxunmadı — bağlanıb-bağlanmadığını yoxlayırıq
+      if(!x.cid) return xeta("Şəbəkə xətası — yenidən cəhd edin.");
+      return tapCid(x.cid).then(function(d){
+        if(d&&d.closed) bitdi(); else xeta("Şəbəkə xətası — yenidən cəhd edin.");
+      }).catch(function(){ xeta("Şəbəkə xətası — yenidən cəhd edin."); });
+    })
     .finally(function(){ btn.disabled=false; btn.textContent='Bağla'; });
 }
 function showSuccess(id,queued,payload){
